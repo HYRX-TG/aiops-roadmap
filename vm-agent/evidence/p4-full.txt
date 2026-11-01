@@ -1,0 +1,52 @@
+===== [P4-服务断线] log_ERROR_payment-api_unreachable__healthz_p (level=P0, judge=rule) =====
+ROOT_CAUSE: 命中排查剧本《节点/服务断线（租用机器失联）》：机器突然失联，按'网络层 → 系统层 → 服务层'自底向上查：节点还在吗？kubelet 活着吗？容器运行时活着吗？服务进程活着吗？租用机器场景最大的坑是：机器可能被云平台重装了、或者被别的租户/维护任务重启了——所以'最近谁重启过这台机器'是必查项。
+CONFIDENCE: medium
+KNOWN:
+  - 告警源 business_log · 严重度 critical · 分级 P0（评分 8.0）
+  - 分级依据：severity=critical 基础分 5.0
+  - 分级依据：命中业务关键词 ['payment'] +2
+  - 已采集节点侧排查证据（见 investigation.evidence）
+INFERRED:
+  - 知识库命中 ['incident/2026-03-dependency-timeout.md', 'runbook/dependency-timeout-v2.md']，按剧本方向处置
+UNCERTAIN:
+  - 规则兜底未做根因推理，请以剧本《节点/服务断线（租用机器失联）》的排查链人工确认（接 LLM 后可自动推理）
+INVESTIGATION CHAIN:
+  [确认节点状态] NotReady/ unreachable = 节点级；仅 Pod 异常 = 服务级
+      证据/命令: 按剧本《节点/服务断线（租用机器失联）》执行：kubectl get nodes -o wide ; kubectl describe node <node> | grep -A10 Conditions
+  [查节点系统层] kubelet 崩溃/重启记录、OOM kill、网卡 down
+      证据/命令: 按剧本《节点/服务断线（租用机器失联）》执行：systemctl status kubelet --no-pager | head -5 ; systemctl status containerd --no-pager | head -3
+  [查租用机器元信息] uptime 很小 = 机器刚重启过 → 找云平台事件
+      证据/命令: 按剧本《节点/服务断线（租用机器失联）》执行：uptime && who -b ; last reboot | head -3
+  [看最近变更] 最近 30 分钟内的 deploy/configmap/secret/scale 事件——有变更先怀疑变更
+      证据/命令: 按剧本《节点/服务断线（租用机器失联）》执行：kubectl get events -A --sort-by=.lastTimestamp | tail -20 ; kubectl rollout history deploy/<svc> -n <ns>
+VERIFICATION COMMANDS:
+  $ kubectl get nodes -w  # 观察状态翻转
+  $ 从节点内 curl 自己的 healthz：区分'节点失联'与'服务假死'
+  $ ss -tlnp | grep <port>  # 服务是否还在监听
+REMEDIATION [SAFE] (可自动/低风险):
+  - 等待/观察（节点可能在自愈，如 kubelet 自动重启） (downtime=none)
+  - 从其他健康节点补副本（多节点集群） (downtime=none)
+REMEDIATION [APPROVAL REQUIRED] (需审批):
+  - 排水该节点（cordon + drain，Pod 全部迁走） (downtime=rolling, approver=SRE on-call, risk=该节点上所有 Pod 被驱逐重建，单节点场景=全停)
+  - 重启 kubelet / containerd (downtime=brief, approver=SRE on-call, risk=重启期间该节点所有 Pod 就绪性受影响)
+  - 重启/重装备份租用机器 (downtime=full, approver=机器 owner + 云平台审批, risk=全停，必须先确认数据已备份)
+RECOMMENDATION: 按排查链执行：先确认影响面 → 拉证据 → 定位 → 验证 → 处置；高危动作必须人工审批
+DRY-RUN PLAN:
+  - 🟢 可自动：等待/观察（节点可能在自愈，如 kubelet 自动重启）
+  - 🟢 可自动：从其他健康节点补副本（多节点集群）
+  - 🔴 需审批（停机风险:rolling · 审批人:SRE on-call）：排水该节点（cordon + drain，Pod 全部迁走）
+  - 🔴 需审批（停机风险:brief · 审批人:SRE on-call）：重启 kubelet / containerd
+  - 🔴 需审批（停机风险:full · 审批人:机器 owner + 云平台审批）：重启/重装备份租用机器
+  blast_radius=namespace approver=SRE on-call state=pending_approval
+GUARDRAIL: tier=3 allowed=False reason=风险等级 T3 超过自动放行阈值 T1，需人工审批
+RAW EVIDENCE (from vm-agent, first 2600 chars):
+e,RBAC --client-ca-file=/etc/kubernetes/pki/ca.crt --enable-admission-plugins=NodeRestriction --enable-bootstrap-token-auth=true --etcd-cafile=/etc/kubernetes/pki/etcd/ca.crt --etcd-certfile=/etc/kubernetes/pki/apiserver-etcd-client.crt --etcd-keyfile=/etc/kubernetes/pki/apiserver-etcd-client.key --etcd-servers=https://127.0.0.1:2379 --kubelet-client-certificate=/etc/kubernetes/pki/apiserver-kubelet-client.crt --kubelet-client-key=/etc/kubernetes/pki/apiserver-kubelet-client.key --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname --proxy-client-cert-file=/etc/kubernetes/pki/front-proxy-client.crt --proxy-client-key-file=/etc/kubernetes/pki/front-proxy-client.key --requestheader-allowed-names=front-proxy-client --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt --requestheader-extra-headers-prefix=X-Remote-Extra- --requestheader-group-headers=X-Remote-Group --requestheader-username-headers=X-Remote-User --secure-port=6443 --service-account-issuer=https://kubernetes.default.svc.cluster.local --service-account-key-file=/etc/kubernetes/pki/sa.pub --service-account-signing-key-file=/etc/kubernetes/pki/sa.key --service-cluster-ip-range=10.96.0.0/12 --tls-cert-file=/etc/kubernetes/pki/apiserver.crt --tls-private-key-file=/etc/kubernetes/pki/apiserver.key
+  31314 root      0.0  4.2    12:45:08 /usr/libexec/fwupd/fwupd
+   1792 root      1.8  2.7    14:35:32 kube-controller-manager --allocate-node-cidrs=true --authentication-kubeconfig=/etc/kubernetes/controller-manager.conf --authorization-kubeconfig=/etc/kubernetes/controller-manager.conf --bind-address=127.0.0.1 --client-ca-file=/etc/kubernetes/pki/ca.crt --cluster-cidr=10.244.0.0/16 --cluster-name=kubernetes --cluster-signing-cert-file=/etc/kubernetes/pki/ca.crt --cluster-signing-key-file=/etc/kubernetes/pki/ca.key --controllers=*,bootstrapsigner,tokencleaner --kubeconfig=/etc/kubernetes/controller-manager.conf --leader-elect=true --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt --root-ca-file=/etc/kubernetes/pki/ca.crt --service-account-private-key-file=/etc/kubernetes/pki/sa.key --service-cluster-ip-range=10.96.0.0/12 --use-service-account-credentials=true
+### 3. Pod 状态全景（非 Running / 重启异常）
+No resources found
+kube-flannel   kube-flannel-ds-jmmrg         1/1     Running   1 (24h ago)   3d
+kube-system    coredns-86bcc9c669-s54g4      1/1     Running   1 (24h ago)   2d23h
+kube-system    coredns-86bcc9c669-wpsj7      1/1     Running   1 (24h ago)   2d23h
+kube-system    etcd-tbt                      1/1     Running   2 (24h ago)   3d
+kube-system    kube-apiserve

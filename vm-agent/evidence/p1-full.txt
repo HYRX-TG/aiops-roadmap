@@ -1,0 +1,66 @@
+===== [P1-资源抢占] log_ERROR_payment-api_latency_55ms_exceeds_t (level=P0, judge=rule) =====
+ROOT_CAUSE: 命中排查剧本《资源抢占（吵闹邻居 / CPU·内存抢占）》：现象是'变慢'而不是'报错'时，先怀疑资源被抢。单节点集群里最大的吵闹邻居往往是另一个团队的批处理/压测容器。思路：确认变慢 → 看谁在吃资源 → 看时间线是否吻合 → 评估是限流对方还是扩容自己——直接杀对方容器在生产里是最后手段。
+CONFIDENCE: medium
+KNOWN:
+  - 告警源 business_log · 严重度 critical · 分级 P0（评分 8.0）
+  - 分级依据：severity=critical 基础分 5.0
+  - 分级依据：命中业务关键词 ['payment'] +2
+  - 已采集节点侧排查证据（见 investigation.evidence）
+INFERRED:
+  - 知识库命中 ['incident/2026-03-dependency-timeout.md', 'runbook/dependency-timeout-v2.md']，按剧本方向处置
+UNCERTAIN:
+  - 规则兜底未做根因推理，请以剧本《资源抢占（吵闹邻居 / CPU·内存抢占）》的排查链人工确认（接 LLM 后可自动推理）
+INVESTIGATION CHAIN:
+  [确认影响面] 受影响 Pod 列表 / 错误率 / 健康检查耗时——决定 P0 还是 P2
+      证据/命令: 按剧本《资源抢占（吵闹邻居 / CPU·内存抢占）》执行：kubectl get pods -A -o wide | grep -v Running ; curl -s -o /dev/null -w '%{http_code} %{time_total}s' http://<svc>/healthz
+  [定位资源消耗方] 某个非本服务 Pod/进程占用 CPU>80% 或内存接近 limit
+      证据/命令: 按剧本《资源抢占（吵闹邻居 / CPU·内存抢占）》执行：cat /proc/loadavg && ps aux --sort=-%cpu | head -8 ; cat /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.max 2>/dev/null
+  [看最近变更] 最近 30 分钟内的 deploy/configmap/secret/scale 事件——有变更先怀疑变更
+      证据/命令: 按剧本《资源抢占（吵闹邻居 / CPU·内存抢占）》执行：kubectl get events -A --sort-by=.lastTimestamp | tail -20 ; kubectl rollout history deploy/<svc> -n <ns>
+  [核对时间线] 两者时间差 < 5 分钟 → 强相关
+      证据/命令: 按剧本《资源抢占（吵闹邻居 / CPU·内存抢占）》执行：kubectl get events -A --sort-by=.lastTimestamp | tail -10 ; ps -o lstart= -p <吵闹邻居PID>
+VERIFICATION COMMANDS:
+  $ cat /proc/loadavg  # 恢复后应回落到基线
+  $ kubectl get events -A | grep -i preempt
+  $ 对比受害服务 healthz 耗时：整改前后各采 5 次
+REMEDIATION [SAFE] (可自动/低风险):
+  - 给吵闹邻居设 CPU Limit（cgroup/k8s limits） (downtime=none)
+  - 受害服务临时扩容 +1 副本（抢占多余时间片） (downtime=none)
+  - 提高受害服务 requests 保证调度下限 (downtime=none)
+REMEDIATION [APPROVAL REQUIRED] (需审批):
+  - 删除/驱逐吵闹邻居 Pod (downtime=full, approver=吵闹邻居 owner + SRE on-call, risk=直接中断对方团队业务，必须对方负责人书面同意)
+  - 对吵闹邻居 namespace 设 ResourceQuota (downtime=none, approver=平台负责人, risk=影响该团队所有工作负载，需平台侧审批)
+RECOMMENDATION: 按排查链执行：先确认影响面 → 拉证据 → 定位 → 验证 → 处置；高危动作必须人工审批
+DRY-RUN PLAN:
+  - 🟢 可自动：给吵闹邻居设 CPU Limit（cgroup/k8s limits）
+  - 🟢 可自动：受害服务临时扩容 +1 副本（抢占多余时间片）
+  - 🟢 可自动：提高受害服务 requests 保证调度下限
+  - 🔴 需审批（停机风险:full · 审批人:吵闹邻居 owner + SRE on-call）：删除/驱逐吵闹邻居 Pod
+  - 🔴 需审批（停机风险:none · 审批人:平台负责人）：对吵闹邻居 namespace 设 ResourceQuota
+  blast_radius=namespace approver=吵闹邻居 owner + SRE on-call state=pending_approval
+GUARDRAIL: tier=2 allowed=False reason=风险等级 T2 超过自动放行阈值 T1，需人工审批
+RAW EVIDENCE (from vm-agent, first 2600 chars):
+        kubelet is posting ready status
+Addresses:
+  InternalIP:  192.168.197.133
+  Hostname:    tbt
+Capacity:
+  cpu:                2
+### 2. 本节点资源水位（无 metrics-server 时用 /proc + cgroup）
+-- CPU 负载: 17.92 6.17 2.57 27/481 221184
+-- 内存: used=1132M avail=2491M total=3875M
+-- 磁盘: used=8.7G avail=2.0G use%=82%
+-- inode: use%=25%
+-- Top5 CPU 进程（资源抢占的直接证据，负载均值在本 VM 不可靠故以 ps 为准）:
+    PID USER     %CPU %MEM     ELAPSED COMMAND
+ 219352 tbt       7.6  0.0       01:09 sh -c while :; do :; done
+ 219331 tbt       7.5  0.0       01:09 sh -c while :; do :; done
+ 219336 tbt       7.5  0.0       01:09 sh -c while :; do :; done
+ 219343 tbt       7.5  0.0       01:09 sh -c while :; do :; done
+ 219350 tbt       7.5  0.0       01:09 sh -c while :; do :; done
+-- Top3 内存进程:
+    PID USER     %CPU %MEM     ELAPSED COMMAND
+   1779 root      3.1  6.6    14:21:12 kube-apiserver --advertise-address=192.168.197.133 --allow-privileged=true --authorization-mode=Node,RBAC --client-ca-file=/etc/kubernetes/pki/ca.crt --enable-admission-plugins=NodeRestriction --enable-bootstrap-token-auth=true --etcd-cafile=/etc/kubernetes/pki/etcd/ca.crt --etcd-certfile=/etc/kubernetes/pki/apiserver-etcd-client.crt --etcd-keyfile=/etc/kubernetes/pki/apiserver-etcd-client.key --etcd-servers=https://127.0.0.1:2379 --kubelet-client-certificate=/etc/kubernetes/pki/apiserver-kubelet-client.crt --kubelet-client-key=/etc/kubernetes/pki/apiserver-kubelet-client.key --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname --proxy-client-cert-file=/etc/kubernetes/pki/front-proxy-client.crt --proxy-client-key-file=/etc/kubernetes/pki/front-proxy-client.key --requestheader-allowed-names=front-proxy-client --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt --requestheader-extra-headers-prefix=X-Remote-Extra- --requestheader-group-headers=X-Remote-Group --requestheader-username-headers=X-Remote-User --secure-port=6443 --service-account-issuer=https://kubernetes.default.svc.cluster.local --service-account-key-file=/etc/kubernetes/pki/sa.pub --service-account-signing-key-file=/etc/kubernetes/pki/sa.key --service-cluster-ip-range=10.96.0.0/12 --tls-cert-file=/etc/kubernetes/pki/apiserver.crt --tls-private-key-file=/etc/kubernetes/pki/apiserver.key
+  31314 root      0.0  4.3    12:30:48 /usr/libexec/fwupd/fwupd
+ 219355 tbt       2.3  3.3       01:09 python3 -c  import time buf = bytearray(120 * 1024 * 1024)          # 120MB 工作集，超出 L3 t0 = time.time() while time.time() - t0 < 100:     s = 0     for i in range(0, len(buf), 4096):         s += buf[i]     time.sleep(0.05) 
+### 3. Pod 状态全景（非 Running / 

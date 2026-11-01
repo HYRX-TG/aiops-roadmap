@@ -1,0 +1,166 @@
+app:
+  description: "\u544A\u8B66\u8BCA\u65AD\u5DE5\u4F5C\u6D41\u9AA8\u67B6\uFF1A\u8F93\u5165\
+    \u544A\u8B66\u2192 LLM \u505A RCA \u6839\u56E0\u5206\u6790\u2192 \u8F93\u51FA\u8BCA\
+    \u65AD\u4E0E\u5EFA\u8BAE\u3002\u53EF\u4F5C\u4E3A\u63A5\u7BA1 StackStorm/Ansible \u6267\
+    \u884C\u5C42\u7684\u201C\u5927\u8111\u201D\u3002"
+  icon: "\U0001F6A8"
+  icon_background: '#FFEAD5'
+  mode: workflow
+  name: "\u544A\u8B66\u8BCA\u65AD\u5DE5\u4F5C\u6D41\uFF08RCA \u9AA8\u67B6\uFF09"
+kind: app
+version: 0.1.0
+workflow:
+  features:
+    file_upload:
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+    opening_statement: ''
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        sourceType: start
+        targetType: llm
+      id: start-source-llm-target
+      source: 'start'
+      sourceHandle: source
+      target: 'llm'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: end
+      id: llm-source-end-target
+      source: 'llm'
+      sourceHandle: source
+      target: 'end'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        desc: "\u544A\u8B66\u8F93\u5165\uff1a\u53EF\u6765\u81EA Nightingale/Keep/StackStorm\
+          \ \u7684\u539F\u59CB\u544A\u8B66\u3002"
+        selected: false
+        title: "\u5F00\u59CB"
+        type: start
+        variables:
+        - label: alert
+          max_length: 50000
+          options: []
+          required: true
+          type: paragraph
+          variable: alert
+      height: 90
+      id: 'start'
+      position:
+        x: 80
+        y: 282
+      positionAbsolute:
+        x: 80
+        y: 282
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: "\u6838\u5FC3 RCA \u8282\u70B9\uff1a\u8BA9 LLM \u6839\u636E\u544A\u8B66\
+          \u63A8\u6D4B\u6839\u56E0\u3001\u5F71\u54CD\u8303\u56F4\u4E0E\u5EFA\u8BAE\u3002"
+        model:
+          completion_params:
+            temperature: 0.3
+          mode: chat
+          name: deepseek-chat
+          provider: deepseek
+        prompt_template:
+        - id: sys-rca-001
+          role: system
+          text: "\u4F60\u662F\u4E00\u4F4D\u8D44\u6DF1\u7684 SRE / \u667A\u80FD\u8FD0\
+            \u7EF4\u8BCA\u65AD\u5DE5\u7A0B\u5E08\u3002\u9762\u5BF9\u4E00\u6761\u751F\
+            \u4EA7\u544A\u8B66\uff0c\u4F60\u7684\u4EFB\u52A1\u662F\u505A\u6839\u56E0\u5206\
+            \u6790\uFF08RCA\uFF09\u5E76\u7ED9\u51FA\u53EF\u6267\u884C\u7684\u5EA6\u91CF\
+            \u4E0E\u5904\u7F6E\u5EFA\u8BAE\u3002\n\n\u8F93\u51FA\u4E25\u683C\u9075\u5B88\
+            \u4EE5\u4E0B\u7ED3\u6784\uFF08\u7528\u4E2D\u6587\uFF0CMarkdown \u683C\u5F0F\
+            \uFF09\uFF1A\n\n### \u544A\u8B66\u6458\u8981\n\u7528\u4E00\u53E5\u8BDD\u6982\
+            \u62EC\u544A\u8B66\u662F\u4EC0\u4E48\u3002\n\n### \u53EF\u80FD\u6839\u56E0\
+            \uFF08\u6309\u6982\u7387\u6392\u5E8F\uff09\n1. \u539F\u56E0 A\uFF08\u6982\u7387\
+            \uFF1A\u9AD8/\u4E2D/\u4F4E\uFF09\u2014\u2014 \u4F9D\u636E\n2. \u539F\u56E0\
+             B \u2026\n\n### \u5F71\u54CD\u8303\u56F4\n\u53D7\u5F71\u54CD\u7684\u670D\
+            \u52A1/\u7528\u6237/\u4E1A\u52A1\u3002\n\n### \u5EFA\u8BAE\u5904\u7F6E\n-\
+            \ \u7ACB\u5373\u6267\u884C\uff1a\u2026\n- \u89C2\u5BDF/\u9A8C\u8BC1\uff1A\
+            \u2026\n- \u53EF\u81EA\u52A8\u5316\u7684\u52A8\u4F5C\uff08\u4F9B StackStorm/Ansible\
+            \ \u627F\u63A5\uff09\uff1A\u2026\n\n### \u7D27\u6025\u7B49\u7EA7\nP0 / P1 /\
+            \ P2 \u4E4B\u4E00\u3002"
+        - id: usr-rca-001
+          role: user
+          text: '{{#start.alert#}}'
+        selected: false
+        title: RCA \u8BCA\u65AD
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 98
+      id: 'llm'
+      position:
+        x: 383
+        y: 282
+      positionAbsolute:
+        x: 383
+        y: 282
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: "\u8F93\u51FA RCA \u8BCA\u65AD\u7ED3\u679C\uFF0C\u53EF\u88AB\u5916\u90E8\
+          \u7CFB\u7EDF\uff08\u5927\u76D8/\u5BA1\u6279\u4E2D\u5FC3/IM\uff09\u8BFB\u53D6\
+          \u3002"
+        outputs:
+        - value_selector:
+          - 'llm'
+          - text
+          variable: output
+        selected: false
+        title: "\u7ED3\u675F"
+        type: end
+      height: 90
+      id: 'end'
+      position:
+        x: 688
+        y: 282
+      positionAbsolute:
+        x: 688
+        y: 282
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    viewport:
+      x: -471
+      y: 5
+      zoom: 1

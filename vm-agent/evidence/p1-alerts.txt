@@ -1,0 +1,12 @@
+﻿=== new alerts (vm-app-2, latency) ===
+2026-10-25T01:15:29+00:00 P0 vm-app-2 log_ERROR_payment-api_latency_55ms_exceeds_t run=
+2026-10-25T01:15:29+00:00 P0 vm-app-2 log_ERROR_payment-api_latency_30ms_exceeds_t run=
+2026-10-25T01:15:29+00:00 P0 vm-app-2 log_ERROR_payment-api_latency_57ms_exceeds_t run=
+2026-10-25T01:15:29+00:00 P0 vm-app-2 log_ERROR_payment-api_latency_32ms_exceeds_t run=
+2026-10-25T01:14:59+00:00 P0 vm-app-2 log_ERROR_payment-api_latency_33ms_exceeds_t run=
+2026-10-25T01:14:59+00:00 P0 vm-app-2 log_ERROR_payment-api_latency_38ms_exceeds_t run=
+2026-10-25T01:14:59+00:00 P0 vm-app-2 log_ERROR_payment-api_latency_34ms_exceeds_t run=
+2026-10-25T01:14:36+00:00 P0 vm-app-2 log_ERROR_payment-api_latency_29ms_exceeds_t run=
+2026-10-25T01:14:36+00:00 P0 vm-app-2 log_ERROR_payment-api_latency_19ms_exceeds_t run=
+2026-10-25T01:14:36+00:00 P0 vm-app-2 log_ERROR_payment-api_latency_42ms_exceeds_t run=
+2026-10-24T02:10:50+00:00 P1 vm-app-2 log_ERROR_disk_usage__tmp_exceeds_85__thresh run=f79954078777

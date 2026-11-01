@@ -1,0 +1,17 @@
+正常流量已启动（10 QPS → /api/pay）
+=== scenario P1 start Sun Oct 25 09:14:14 AM CST 2026 ===
+--- 正常基线 3s ---
+24 个 CPU 忙循环 + 1 个内存扫描进程已启动
+[P1] 吵闹邻居已启动（90s 自愈）
+[P1] 自愈完成（CPU 让出）
+=== scenario P1 done, log tail: ===
+2026-10-25 09:15:39 ERROR payment-api latency 20ms exceeds threshold (baseline 8ms, 3x degradation, SLO breach)
+2026-10-25 09:15:41 ERROR payment-api latency 57ms exceeds threshold (baseline 8ms, 7x degradation, SLO breach)
+2026-10-25 09:15:42 ERROR payment-api latency 46ms exceeds threshold (baseline 8ms, 6x degradation, SLO breach)
+2026-10-25 09:15:44 ERROR payment-api latency 23ms exceeds threshold (baseline 8ms, 3x degradation, SLO breach)
+2026-10-25 09:15:46 ERROR payment-api latency 42ms exceeds threshold (baseline 8ms, 5x degradation, SLO breach)
+2026-10-25 09:15:47 ERROR payment-api latency 27ms exceeds threshold (baseline 8ms, 4x degradation, SLO breach)
+=== changes tail: ===
+2026-10-24 11:03:28 [team-billing] team-billing 启动批处理作业 batch-reconcile（未设 CPU limit）
+2026-10-24 11:07:09 [team-billing] team-billing 启动批处理作业 batch-reconcile（未设 CPU limit）
+2026-10-25 09:14:17 [team-billing] team-billing 启动批处理作业 batch-reconcile（make -j24 未设 CPU limit，未做资源评估）

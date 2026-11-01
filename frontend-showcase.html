@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AIOps 知识图谱 · 前端视觉预览</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --card:#fff; --ink:#111827; --sub:#6b7280; --line:#e5e7eb;
+    --blue:#2563eb; --teal:#0d9488; --emerald:#059669; --amber:#d97706; --indigo:#4f46e5;
+    --red:#dc2626;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.6;padding:32px 16px 80px}
+  .wrap{max-width:980px;margin:0 auto}
+  header.top{text-align:center;margin-bottom:28px}
+  header.top h1{font-size:26px;font-weight:800;letter-spacing:-.5px}
+  header.top p{color:var(--sub);font-size:14px;margin-top:6px}
+  .note{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:13px;
+    padding:10px 14px;border-radius:12px;margin:18px 0}
+  section{background:var(--card);border:1px solid var(--line);border-radius:18px;
+    padding:22px;margin-bottom:22px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  section h2{font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  section .tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;
+    background:#eef2ff;color:#4338ca}
+  section .desc{color:var(--sub);font-size:13px;margin:6px 0 16px}
+  .screen{position:relative;border:1px solid var(--line);border-radius:14px;overflow:hidden;
+    background:#fafafa}
+  .screen .bar{display:flex;align-items:center;justify-content:space-between;
+    padding:12px 16px;background:#fff;border-bottom:1px solid var(--line)}
+  .screen .bar h3{font-size:15px;font-weight:700}
+  .screen .bar .sub{font-size:12px;color:var(--sub)}
+  .chip{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;
+    padding:4px 10px;border-radius:999px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0}
+  .reco{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;
+    padding:5px 12px;border-radius:999px;background:#f0fdfa;color:#0f766e;border:1px solid #99f6e4}
+  .graph{display:flex;flex-wrap:wrap;gap:12px;padding:20px;background:
+    radial-gradient(circle,#e5e7eb 1px,transparent 1px);background-size:20px 20px}
+  .zone{width:140px;height:74px;border-radius:14px;display:flex;flex-direction:column;
+    justify-content:center;padding:12px;color:#fff;font-weight:700;font-size:13px;
+    box-shadow:0 4px 10px rgba(0,0,0,.12)}
+  .zone small{font-weight:500;font-size:10px;opacity:.85}
+  .z1{background:linear-gradient(135deg,#6366f1,#4338ca)}
+  .z2{background:linear-gradient(135deg,#0ea5e9,#0369a1)}
+  .z3{background:linear-gradient(135deg,#10b981,#047857)}
+  .z4{background:linear-gradient(135deg,#f59e0b,#b45309)}
+  .z5{background:linear-gradient(135deg,#ec4899,#be185d)}
+  /* onboarding modal */
+  .modal{position:absolute;inset:0;background:rgba(0,0,0,.4);display:flex;
+    align-items:center;justify-content:center;padding:20px}
+  .modal .card{background:#fff;border-radius:18px;max-width:420px;width:100%;
+    padding:24px;border:1px solid var(--line);box-shadow:0 20px 40px rgba(0,0,0,.2)}
+  .modal .card h3{font-size:18px;font-weight:800;display:flex;align-items:center;gap:8px}
+  .modal ol{margin:14px 0 18px;display:flex;flex-direction:column;gap:10px}
+  .modal li{display:flex;gap:10px;align-items:flex-start}
+  .modal .num{flex:0 0 26px;height:26px;border-radius:999px;background:#eff6ff;color:#2563eb;
+    font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .modal li p{font-size:13px}
+  .modal li p b{display:block;font-size:13px}
+  .modal li p span{color:var(--sub);font-size:12px}
+  .btns{display:flex;gap:10px}
+  .btn{flex:1;padding:10px;border-radius:12px;font-size:13px;font-weight:700;border:none;cursor:pointer}
+  .btn.primary{background:var(--blue);color:#fff}
+  .btn.ghost{background:transparent;color:#9ca3af;flex:0 0 auto;padding:10px 14px}
+  /* node panel */
+  .panel{display:flex;min-height:340px}
+  .panel .body{flex:1;padding:18px}
+  .panel .body h3{font-size:17px;font-weight:800}
+  .panel .body .meta{font-size:12px;color:var(--sub);margin:4px 0 14px}
+  .steps{display:flex;gap:8px;margin-bottom:14px}
+  .steps span{font-size:11px;padding:4px 10px;border-radius:999px;background:#f3f4f6;color:#374151}
+  .steps span.on{background:#dcfce7;color:#15803d}
+  .seg{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+  .seg h4{font-size:12px;font-weight:700;color:#374151;margin-bottom:6px}
+  .seg p{font-size:13px;color:#4b5563}
+  .qb{display:inline-block;background:#eef2ff;color:#4338ca;font-size:12px;
+    padding:5px 10px;border-radius:10px;margin:3px 4px 0 0}
+  .foot{margin-top:14px}
+  .btn-complete{width:100%;padding:11px;border-radius:12px;background:var(--blue);color:#fff;
+    font-weight:700;font-size:13px;border:none}
+  .toast{position:absolute;top:14px;left:50%;transform:translateX(-50%);
+    background:var(--emerald);color:#fff;font-size:13px;font-weight:700;padding:9px 16px;
+    border-radius:12px;box-shadow:0 8px 20px rgba(0,0,0,.2)}
+  /* ai panel */
+  .ai{border:1px solid #99f6e4;background:#f0fdfa;border-radius:16px;padding:16px;margin-top:8px}
+  .ai .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+  .ai .head h4{font-size:14px;font-weight:800;color:#0f766e;display:flex;align-items:center;gap:6px}
+  .ai .head .badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;
+    background:#ccfbf1;color:#0f766e}
+  .ai p.lead{font-size:12px;color:var(--sub);margin-bottom:12px}
+  .aibtns{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+  .aibtns button{padding:10px;border-radius:12px;font-size:13px;font-weight:700;color:#fff;border:none}
+  .aibtns .d{background:var(--indigo)} .aibtns .r{background:var(--teal)} .aibtns .e{background:var(--amber)}
+  .arow{border-radius:12px;background:#fff;border:1px solid var(--line);padding:11px;margin-bottom:8px}
+  .arow .lbl{font-size:10px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;margin-bottom:5px}
+  .arow.g .lbl{color:var(--emerald)} .arow.y .lbl{color:var(--amber)}
+  .arow.w .lbl{color:#6b7280} .arow.e .lbl{color:var(--amber)} .arow.s .lbl{color:var(--emerald)}
+  .arow ul{list-style:none;font-size:12px;color:#374151}
+  .arow ul li{margin:2px 0 2px 12px;position:relative}
+  .arow ul li:before{content:"·";position:absolute;left:-10px;font-weight:700}
+  .plan{border-radius:12px;background:#fffbeb;border:1px solid #fcd34d;padding:11px;margin-bottom:8px}
+  .plan .lbl{font-size:10px;font-weight:800;color:#b45309;text-transform:uppercase;margin-bottom:5px}
+  .plan ol{font-size:12px;color:#374151;padding-left:18px}
+  .plan .pill{display:inline-block;font-size:10px;padding:2px 8px;border-radius:999px;
+    background:#fef3c7;color:#92400e;margin:6px 6px 0 0}
+  .approve{display:flex;gap:8px;margin-top:8px}
+  .approve button{flex:1;padding:9px;border-radius:11px;font-weight:700;font-size:13px;border:none}
+  .approve .go{background:var(--emerald);color:#fff} .approve .no{background:#e5e7eb;color:#374151}
+  .annot{font-size:12px;color:var(--sub);background:#f9fafb;border:1px dashed var(--line);
+    border-radius:10px;padding:10px 12px;margin-top:14px}
+  .annot code{background:#eef2ff;color:#4338ca;padding:1px 5px;border-radius:5px;font-size:11px}
+  .feats{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px}
+  .feat{border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff}
+  .feat .t{font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;margin-bottom:4px}
+  .feat p{font-size:12px;color:var(--sub)}
+  footer{text-align:center;color:var(--sub);font-size:12px;margin-top:10px}
+  @media(max-width:640px){.feats{grid-template-columns:1fr}.panel{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>🫘 AIOps 知识图谱 · 前端视觉预览</h1>
+    <p>基于 Next.js 16 + React Flow 的面试项目 · 纯静态导出 · 已落地「人性化交互 + AIOps 闭环」</p>
+  </header>
+
+  <div class="note">
+    ⚠️ 本页是静态视觉还原（配色 / 文案 / 样例数据均来自真实代码），方便你不开服务也能预览。
+    要看<strong>真东西</strong>：进 <code>D:\aiops-roadmap</code> 双击 <code>start-server.bat</code>（或 <code>npm run dev</code>），打开
+    <strong>http://localhost:3000</strong>。
+  </div>
+
+  <!-- 运行方式 -->
+  <section>
+    <h2>🚀 本地怎么跑</h2>
+    <div class="desc">三步，零后端依赖（项目用 <code>output:"export"</code> 纯静态导出）。</div>
+    <div class="annot">
+      ① 进入目录：<code>cd D:\aiops-roadmap</code><br/>
+      ② 装依赖（首次）：<code>npm install</code><br/>
+      ③ 起服务：双击 <code>start-server.bat</code>，或 <code>npm run dev</code> → 浏览器开 <code>http://localhost:3000</code><br/>
+      （构建校验：<code>npm run build</code> 生成 18 个静态页；<code>npm run test</code> 跑 33 个单测）
+    </div>
+  </section>
+
+  <!-- 屏1 首页 -->
+  <section>
+    <span class="tag">ZoneMap.tsx</span>
+    <h2>① 首页 · 知识图谱</h2>
+    <div class="desc">React Flow 画的知识树。首次进入有引导卡、顶部有总进度、零进度时给 AIOps 入口推荐。</div>
+    <div class="screen">
+      <div class="bar">
+        <div>
+          <h3>AIOps 知识图谱</h3>
+          <div class="sub" style="margin-top:4px;display:flex;align-items:center;gap:8px">
+            <span class="chip">🎓 已掌握 0%（0/300+）</span>
+            <span class="reco">🤖 推荐：从 AIOps 智能运维开始</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <span class="chip" style="background:#f3f4f6;color:#6b7280;border:none">🔍 搜索 ⌘K</span>
+          <span class="chip" style="background:#f3f4f6;color:#6b7280;border:none">？</span>
+        </div>
+      </div>
+      <div class="graph">
+        <div class="zone z1">监控接入<small>Metrics/Logs/Trace</small></div>
+        <div class="zone z2">根因分析<small>HolmesGPT RCA</small></div>
+        <div class="zone z3">知识中枢<small>RAGFlow</small></div>
+        <div class="zone z4">编排执行<small>Dify + StackStorm</small></div>
+        <div class="zone z5">护栏审批<small>人在回路</small></div>
+      </div>
+      <!-- onboarding -->
+      <div class="modal">
+        <div class="card">
+          <h3><span style="font-size:22px">👋</span> 欢迎来到 AIOps 知识图谱</h3>
+          <p style="font-size:13px;color:#6b7280;margin:8px 0 0">用一棵会生长的知识树，把运维从「被动救火」学成「AI 闭环」。只需 3 步就能上手：</p>
+          <ol>
+            <li><span class="num">1</span><p><b>🗺️ 点分区进入</b><span>首页每个彩色卡片是一个知识领域</span></p></li>
+            <li><span class="num">2</span><p><b>📖 点节点看知识</b><span>摘要 → 深入 → 里程碑，渐进式展开</span></p></li>
+            <li><span class="num">3</span><p><b>💡 点问题气泡展开</b><span>顺着「你会问什么」一路向下挖</span></p></li>
+          </ol>
+          <div class="btns">
+            <button class="btn primary">从 AIOps 开始 →</button>
+            <button class="btn ghost">跳过</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="annot">
+      • 首次引导：<code>showOnboarding</code> 状态 + <code>localStorage["aiops-roadmap-onboarded"]</code>，关掉后不再弹（<code>ZoneMap.tsx:444</code>）。<br/>
+      • 总进度：<code>overallPct = totalCompleted/totalNodes</code>，头部细进度条（<code>ZoneMap.tsx:248-291</code>）。<br/>
+      • 推荐入口：零进度时右上角出现「🤖 推荐：从 AIOps 智能运维开始」→ 跳 <code>/aiops</code>（<code>ZoneMap.tsx:294-301</code>）。
+    </div>
+  </section>
+
+  <!-- 屏2 节点详情 -->
+  <section>
+    <span class="tag">ContentPanel.tsx</span>
+    <h2>② 节点详情 · 渐进式学习 + 完成庆祝</h2>
+    <div class="desc">每个知识节点是「摘要 → 深入 → 里程碑」三段式，看完点「标记为已完成」会弹庆祝 toast。</div>
+    <div class="screen">
+      <div class="toast">🎉 完成！已掌握「根因分析」</div>
+      <div class="panel">
+        <div class="body">
+          <h3>根因分析（RCA）</h3>
+          <div class="meta">AIOps · 智能运维闭环 · 7 分钟阅读</div>
+          <div class="steps">
+            <span class="on">① 摘要</span><span>② 深入</span><span>③ 里程碑</span>
+          </div>
+          <div class="seg"><h4>📌 一句话</h4><p>从「现象」反推「根因」，而不是被海量告警淹没。</p></div>
+          <div class="seg"><h4>🧭 你会问什么</h4>
+            <span class="qb">为什么是这次发布？</span><span class="qb">依赖超时怎么判？</span><span class="qb">回滚还是扩容？</span>
+          </div>
+          <div class="foot">
+            <button class="btn-complete">✓ 已完成 — 点击撤销</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="annot">
+      • 庆祝机制：<code>handleMarkComplete</code> 首次完成置 <code>celebrate=true</code>，2.6s 后自动消失（<code>ContentPanel.tsx:330-334</code>）。<br/>
+      • 三段式 + 问题气泡是「渐进式披露」：先给结论，再让人按需深挖，避免一上来信息过载。
+    </div>
+  </section>
+
+  <!-- 屏3 AI 助手 -->
+  <section>
+    <span class="tag">ContentPanel.tsx + aiEngine.ts + guardrails.ts</span>
+    <h2>③ AI 助手面板 · 智能运维闭环（自研核心）</h2>
+    <div class="desc">仅 <code>aiops</code> 分区出现。三个动作演示「监控→RCA→取知识→编排执行」，执行权永远在人手里。</div>
+    <div class="screen">
+      <div class="panel">
+        <div class="body">
+          <div class="ai">
+            <div class="head">
+              <h4>🤖 AI 助手 · 智能运维闭环</h4><span class="badge">演示</span>
+            </div>
+            <p class="lead">把「监控接入 → 根因分析 → 取知识 → 编排执行」串起来。执行权始终在你手里——AI 只给建议，高危操作必须人工审批。</p>
+            <div class="aibtns">
+              <button class="d">🤖 AI 诊断</button>
+              <button class="r">📚 取 Runbook</button>
+              <button class="e">⚡ 一键执行（待审批）</button>
+            </div>
+
+            <div class="arow g">
+              <div class="lbl">🟢 已知（基于真实数据）</div>
+              <p style="font-size:12px;color:#374151">针对节点「根因分析」，结合实时告警与依赖拓扑，初步定位为「上游依赖超时引发的连锁变慢」。</p>
+            </div>
+            <div class="arow y">
+              <div class="lbl">🟡 推测（AI 推断）</div>
+              <ul><li>近 10 分钟有一次相关发布，时间线与错误率抬升吻合</li><li>下游 P99 上升但 CPU/内存未到瓶颈，更像外部依赖问题</li></ul>
+            </div>
+            <div class="arow w">
+              <div class="lbl">⚪ 无法确认（缺少证据）</div>
+              <ul><li>未拿到该依赖的下游成功率指标（数据源未接入）</li><li>是否为灰度流量导致的局部问题</li></ul>
+            </div>
+            <div class="plan">
+              <div class="lbl">⚡ 执行计划（dry-run · 待审批）</div>
+              <ol><li>kubectl rollout restart deploy/svc-web -n prod</li><li>等待 60s 健康探针通过</li><li>若错误率未回落，自动回滚到上一版本</li></ol>
+              <span class="pill">爆炸半径：namespace</span><span class="pill">审批人：SRE on-call</span>
+            </div>
+            <div class="arow s">
+              <div class="lbl">💡 建议</div>
+              <p style="font-size:12px;color:#374151">请在下方审批：确认执行 / 修改计划 / 拒绝。</p>
+            </div>
+            <div class="approve">
+              <button class="go">✅ 确认执行</button>
+              <button class="no">❌ 拒绝</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="annot">
+      • 状态机：<code>idle → loading → done / pending_approval / failed</code>（<code>ContentPanel.tsx:356</code>）。<br/>
+      • 「人是主导」：诊断/Runbook 是只读（<code>🟢🟡⚪💡</code> 区分已知/推测/无法确认/建议）；执行类一律先出 dry-run 计划 + 爆炸半径 + 审批人，<strong>绝不静默自动执行</strong>。<br/>
+      • 护栏网关 <code>evaluateAction()</code>：只读自动放行；写操作默认需审批；冻结窗口直接拦截（<code>guardrails.ts:52</code>）。<br/>
+      • 真实接线在后端 <code>/api/ai</code>：夜莺 MCP → HolmesGPT → RAGFlow → Dify → StackStorm（前端只发 <code>{nodeId, action}</code>）。
+    </div>
+  </section>
+
+  <!-- 人性化设计小结 -->
+  <section>
+    <h2>🎯 人性化设计都做了哪些</h2>
+    <div class="desc">不是堆功能，而是让「第一次来的人」不迷路、「学完」有正反馈、「用 AI」时心里有底。</div>
+    <div class="feats">
+      <div class="feat"><div class="t">👋 首次引导</div><p>一次性欢迎卡讲清 3 步用法，localStorage 记住已看过，不骚扰老用户。</p></div>
+      <div class="feat"><div class="t">🎓 总进度概览</div><p>首页头部细进度条 + 百分比，随时知道学到哪了，给持续感。</p></div>
+      <div class="feat"><div class="t">🤖 智能推荐</div><p>零基础时主动推 AIOps 入口，降低「从哪开始」的决策成本。</p></div>
+      <div class="feat"><div class="t">🎉 完成庆祝</div><p>标记掌握即弹 toast，把「学习成就」做成即时正反馈。</p></div>
+      <div class="feat"><div class="t">📖 渐进式披露</div><p>摘要→深入→里程碑，信息分层，不被一次砸晕。</p></div>
+      <div class="feat"><div class="t">🛡️ 高危有摩擦</div><p>AI 执行永远先出计划+审批，爆炸半径/审批人透明，危险动作不静默。</p></div>
+    </div>
+  </section>
+
+  <footer>🫘 大豆 · AIOps 面试项目前端预览 · 真实运行见 http://localhost:3000</footer>
+</div>
+</body>
+</html>

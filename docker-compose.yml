@@ -1,0 +1,43 @@
+# AIOps 平台本地一键起（前端 :3000 + 后端 :8600）
+#
+# 复盘修正：此前只有前端 compose 语义缺失——后端要手动 uvicorn，且数据库
+# 相对路径落在启动目录里（cwd 不同 → 数据散两处）。这里固定 backend 的
+# working_dir 为 /data，数据库路径统一。
+#
+# 用法：
+#   docker compose up --build          # 起全栈
+#   打开 http://localhost:3000 → 设置页后端地址填 http://localhost:8600
+#
+# 配 LLM 大脑（DeepSeek 例）：把 key 填进 .env 的 LLM_API_KEY，或：
+#   LLM_API_KEY=sk-xxx docker compose up
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8600:8600"
+    environment:
+      - AIOPS_AUTO_RESEARCH=1
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-deepseek-chat}
+      - AIOPS_CORS_ORIGINS=${AIOPS_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+    volumes:
+      - aiops-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8600/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  aiops-data:

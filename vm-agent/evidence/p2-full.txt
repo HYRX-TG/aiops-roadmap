@@ -1,0 +1,50 @@
+===== [P2-跨部门变更] log_ERROR_payment-api_failed_to_start_after_ (level=P0, judge=rule) =====
+ROOT_CAUSE: 命中排查剧本《变更引入故障（跨部门发布/配置变更）》：报错时间点附近有人发布，先按'变更引起'查——这是最快路径。思路：锁定变更对象 → 对比变更前后行为 → 确认是回滚还是修配置。注意：变更可能是别的团队做的，处置前必须同步对方，否则会出现'你回滚了、对方又发上来'的拉锯。
+CONFIDENCE: medium
+KNOWN:
+  - 告警源 business_log · 严重度 critical · 分级 P0（评分 8.0）
+  - 分级依据：severity=critical 基础分 5.0
+  - 分级依据：命中业务关键词 ['payment'] +2
+  - 已采集节点侧排查证据（见 investigation.evidence）
+INFERRED:
+  - 知识库命中 ['incident/2026-03-dependency-timeout.md', 'runbook/dependency-timeout-v2.md']，按剧本方向处置
+UNCERTAIN:
+  - 规则兜底未做根因推理，请以剧本《变更引入故障（跨部门发布/配置变更）》的排查链人工确认（接 LLM 后可自动推理）
+INVESTIGATION CHAIN:
+  [确认影响面] 受影响 Pod 列表 / 错误率 / 健康检查耗时——决定 P0 还是 P2
+      证据/命令: 按剧本《变更引入故障（跨部门发布/配置变更）》执行：kubectl get pods -A -o wide | grep -v Running ; curl -s -o /dev/null -w '%{http_code} %{time_total}s' http://<svc>/healthz
+  [看最近变更] 最近 30 分钟内的 deploy/configmap/secret/scale 事件——有变更先怀疑变更
+      证据/命令: 按剧本《变更引入故障（跨部门发布/配置变更）》执行：kubectl get events -A --sort-by=.lastTimestamp | tail -20 ; kubectl rollout history deploy/<svc> -n <ns>
+  [对比变更前后差异] 变更版本号 + 具体 diff（镜像 tag / env / 配置项）
+      证据/命令: 按剧本《变更引入故障（跨部门发布/配置变更）》执行：kubectl rollout history deploy/<svc> -n <ns> ; kubectl describe deploy <svc> -n <ns> | grep -A5 'Annotations'
+  [确认是变更而非偶发] 错误模式与变更内容强相关（如新配置项导致的启动失败）
+      证据/命令: 按剧本《变更引入故障（跨部门发布/配置变更）》执行：kubectl logs deploy/<svc> -n <ns> --since=30m | grep -i error | head ; kubectl get events -A --sort-by=.lastTimestamp | tail -10
+VERIFICATION COMMANDS:
+  $ kubectl rollout status deploy/<svc> -n <ns>
+  $ kubectl get pods -l app=<svc> -o wide  # 新副本分布
+  $ 对比变更前后的错误率曲线（Prometheus/日志计数）
+REMEDIATION [SAFE] (可自动/低风险):
+  - 保留现场，先摘流量观察（不删任何东西） (downtime=none)
+  - 扩容旧版本副本（maxSurge 滚动，新旧并存） (downtime=none)
+REMEDIATION [APPROVAL REQUIRED] (需审批):
+  - 回滚到上一版本（kubectl rollout undo） (downtime=rolling, approver=变更发起方负责人 + SRE on-call, risk=会中断当前版本正在处理的请求，需评估在途业务)
+  - 删除他人创建的 ConfigMap/Secret (downtime=full, approver=资源 owner + 平台负责人, risk=影响引用它的所有工作负载，必须同步 owner)
+RECOMMENDATION: 按排查链执行：先确认影响面 → 拉证据 → 定位 → 验证 → 处置；高危动作必须人工审批
+DRY-RUN PLAN:
+  - 🟢 可自动：保留现场，先摘流量观察（不删任何东西）
+  - 🟢 可自动：扩容旧版本副本（maxSurge 滚动，新旧并存）
+  - 🔴 需审批（停机风险:rolling · 审批人:变更发起方负责人 + SRE on-call）：回滚到上一版本（kubectl rollout undo）
+  - 🔴 需审批（停机风险:full · 审批人:资源 owner + 平台负责人）：删除他人创建的 ConfigMap/Secret
+  blast_radius=namespace approver=变更发起方负责人 + SRE on-call state=pending_approval
+GUARDRAIL: tier=3 allowed=False reason=风险等级 T3 超过自动放行阈值 T1，需人工审批
+RAW EVIDENCE (from vm-agent, first 2600 chars):
+--trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
+-- Top3 内存进程:
+    PID USER     %CPU %MEM     ELAPSED COMMAND
+   1779 root      3.1  6.6    14:25:34 kube-apiserver --advertise-address=192.168.197.133 --allow-privileged=true --authorization-mode=Node,RBAC --client-ca-file=/etc/kubernetes/pki/ca.crt --enable-admission-plugins=NodeRestriction --enable-bootstrap-token-auth=true --etcd-cafile=/etc/kubernetes/pki/etcd/ca.crt --etcd-certfile=/etc/kubernetes/pki/apiserver-etcd-client.crt --etcd-keyfile=/etc/kubernetes/pki/apiserver-etcd-client.key --etcd-servers=https://127.0.0.1:2379 --kubelet-client-certificate=/etc/kubernetes/pki/apiserver-kubelet-client.crt --kubelet-client-key=/etc/kubernetes/pki/apiserver-kubelet-client.key --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname --proxy-client-cert-file=/etc/kubernetes/pki/front-proxy-client.crt --proxy-client-key-file=/etc/kubernetes/pki/front-proxy-client.key --requestheader-allowed-names=front-proxy-client --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt --requestheader-extra-headers-prefix=X-Remote-Extra- --requestheader-group-headers=X-Remote-Group --requestheader-username-headers=X-Remote-User --secure-port=6443 --service-account-issuer=https://kubernetes.default.svc.cluster.local --service-account-key-file=/etc/kubernetes/pki/sa.pub --service-account-signing-key-file=/etc/kubernetes/pki/sa.key --service-cluster-ip-range=10.96.0.0/12 --tls-cert-file=/etc/kubernetes/pki/apiserver.crt --tls-private-key-file=/etc/kubernetes/pki/apiserver.key
+  31314 root      0.0  4.3    12:35:10 /usr/libexec/fwupd/fwupd
+   1792 root      1.8  2.7    14:25:34 kube-controller-manager --allocate-node-cidrs=true --authentication-kubeconfig=/etc/kubernetes/controller-manager.conf --authorization-kubeconfig=/etc/kubernetes/controller-manager.conf --bind-address=127.0.0.1 --client-ca-file=/etc/kubernetes/pki/ca.crt --cluster-cidr=10.244.0.0/16 --cluster-name=kubernetes --cluster-signing-cert-file=/etc/kubernetes/pki/ca.crt --cluster-signing-key-file=/etc/kubernetes/pki/ca.key --controllers=*,bootstrapsigner,tokencleaner --kubeconfig=/etc/kubernetes/controller-manager.conf --leader-elect=true --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt --root-ca-file=/etc/kubernetes/pki/ca.crt --service-account-private-key-file=/etc/kubernetes/pki/sa.key --service-cluster-ip-range=10.96.0.0/12 --use-service-account-credentials=true
+### 3. Pod 状态全景（非 Running / 重启异常）
+No resources found
+kube-flannel   kube-flannel-ds-jmmrg         1/1     Running   1 (24h ago)   2d23h
+kube-system    coredns

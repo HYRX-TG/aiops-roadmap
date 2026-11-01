@@ -1,0 +1,439 @@
+---
+id: writing-a-dockerfile
+title: Writing a Dockerfile
+zone: containers
+edges:
+  to:
+    - id: docker-compose-dev
+      question: >-
+        I can build an image. My app needs a database too — how do I run them
+        together?
+      detail: >-
+        I've got my app containerized, but it needs Postgres running alongside
+        it. Right now I'm starting them separately by hand every time. There has
+        to be a way to declare the whole stack and spin everything up together.
+    - id: image-optimization
+      question: My image works but it's 1.2GB. How do I make it smaller?
+      detail: >-
+        It takes forever to push and pull. I'm not sure what's in there or why
+        it's so big. And every time I change one line of code the whole thing
+        rebuilds from scratch — there must be a smarter way to do this.
+    - id: debugging-dockerfile-builds
+      question: My docker build is failing and I have no idea why.
+      detail: >-
+        The error message points at a RUN command but I can't tell what actually
+        went wrong inside it. And sometimes it's not a failure — the image builds
+        fine but the app inside doesn't behave the way I expect.
+difficulty: 2
+tags:
+  - docker
+  - dockerfile
+  - containers
+  - build
+category: practice
+milestones:
+  - Write a Dockerfile for your application
+  - Build the image locally with docker build
+  - Run the container with docker run and verify it works
+  - Use a multi-stage build to keep the final image small
+  - Understand which files to exclude with .dockerignore
+title_zh: "编写 Dockerfile"
+
+---
+
+
+A Dockerfile is a recipe for building a container image. It starts from a base image — an operating system snapshot, usually with a language runtime already installed — then adds your application's dependencies, copies in your code, and declares how the application starts. Every instruction creates a new layer on top of the previous one, and the final stack of layers is the image.
+
+Writing a Dockerfile for a simple application is straightforward. Getting it right for production involves understanding a handful of non-obvious ideas: layer ordering for cache efficiency, the difference between CMD and ENTRYPOINT, and why copying files in the right order can mean the difference between a 5-second rebuild and a 3-minute one.
+
+Multi-stage builds are worth learning early. They let you use a full build environment (compilers, dev dependencies, build tools) to produce your artifact, then copy just the artifact into a minimal final image. The result is an image that's smaller, has fewer attack surface dependencies, and is faster to push and pull.
+
+<!-- DEEP_DIVE -->
+
+## The anatomy of a Dockerfile
+
+Here's a realistic Dockerfile for a Python web application:
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+ENV PORT=8000
+EXPOSE 8000
+
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+And for a Node.js application:
+
+```dockerfile
+FROM node:20-slim
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+COPY . .
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]
+```
+
+Key instructions:
+
+| Instruction | What it does |
+|-------------|--------------|
+| `FROM` | Sets the base image — everything starts here |
+| `WORKDIR` | Sets the working directory for subsequent instructions; creates it if missing |
+| `COPY` | Copies files from the build context into the image |
+| `RUN` | Executes a command during the build; creates a new layer |
+| `ENV` | Sets an environment variable that persists into the running container |
+| `ARG` | Build-time variable; available during build only, not in the running container |
+| `EXPOSE` | Documents which port the container listens on (informational only — doesn't publish the port) |
+| `CMD` | Default command to run when the container starts; overridable at `docker run` time |
+| `ENTRYPOINT` | Fixed executable; CMD becomes its arguments |
+
+## FROM: choosing a base image
+
+The base image is the biggest decision in a Dockerfile. It determines the OS userspace, available tools, and a large fraction of the final image size.
+
+**Language-specific slim variants** are the right default for most applications:
+
+```dockerfile
+FROM python:3.11-slim
+FROM node:20-slim
+FROM golang:1.22-bookworm
+```
+
+The `-slim` variants are Debian-based with most optional packages stripped out. They're small enough for most purposes and don't have the compatibility issues of Alpine.
+
+**Alpine images** (`python:3.11-alpine`, `node:20-alpine`) are tempting because they're tiny — often 5–10x smaller than slim variants. But Alpine uses musl libc instead of glibc. Most pure-Python or pure-JS code works fine, but C extensions (numpy, psycopg2, bcrypt) often fail to install or produce subtle runtime bugs. Unless you specifically need Alpine's size, slim variants are safer.
+
+**Distroless images** (from `gcr.io/distroless/`) contain only the runtime and your application — no shell, no package manager, no utilities. They're very secure and very hard to debug. A good choice for final production images once everything is working; not a good choice when you're still figuring things out.
+
+**Always pin to a specific version.** `FROM python:latest` will silently upgrade when you rebuild, breaking things unpredictably:
+
+```dockerfile
+# wrong
+FROM python:latest
+
+# right
+FROM python:3.11-slim
+# or even more specific:
+FROM python:3.11.8-slim
+```
+
+## RUN: installing dependencies
+
+Each `RUN` instruction creates a new layer. Keeping layers small and meaningful is good, but there's an important exception: **always combine apt-get update and apt-get install into a single RUN instruction**:
+
+```dockerfile
+# wrong — stale cache can serve an old package index
+RUN apt-get update
+RUN apt-get install -y curl
+
+# right
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+```
+
+If `apt-get update` is a separate layer, Docker will cache it. On a future build, Docker reuses that cached layer even if the package index is a week old — which can cause `apt-get install` to fail because the package version it's looking for is no longer in the cached index. Keeping them in one instruction ensures `update` always runs before `install`.
+
+The `rm -rf /var/lib/apt/lists/*` at the end removes the package lists, which can add tens of megabytes to an image. Always clean up in the same `RUN` instruction — cleaning up in a later `RUN` doesn't remove the files from the earlier layer.
+
+## COPY: getting your code in
+
+The key to efficient builds is understanding how Docker's layer cache interacts with COPY. When you change a file, Docker invalidates the cache for the COPY instruction that includes it, and rebuilds everything after.
+
+The pattern: **copy dependency manifests first, install dependencies, then copy source code.**
+
+```dockerfile
+# copy only the dependency list first
+COPY requirements.txt .
+# this layer only rebuilds when requirements.txt changes
+RUN pip install --no-cache-dir -r requirements.txt
+
+# now copy the rest of the code
+# this layer rebuilds on every code change, but pip install doesn't
+COPY . .
+```
+
+If you did `COPY . .` first, every single code change would invalidate the pip install layer and force a full reinstall of all packages. With the pattern above, pip install only reruns when `requirements.txt` actually changes.
+
+For file ownership, use `--chown` to set the owner in the same instruction rather than a separate `RUN chown`:
+
+```dockerfile
+COPY --chown=appuser:appuser . .
+```
+
+## CMD vs ENTRYPOINT
+
+Both CMD and ENTRYPOINT specify what runs when the container starts, but they behave differently:
+
+- **CMD** is the default command. It can be completely overridden by passing a command to `docker run`: `docker run myapp python manage.py migrate` replaces the CMD entirely.
+- **ENTRYPOINT** is the fixed executable. If you set an entrypoint, CMD becomes arguments passed to it. The entrypoint itself can only be overridden with `--entrypoint`.
+
+A common pattern: ENTRYPOINT sets the executable, CMD sets the default arguments:
+
+```dockerfile
+ENTRYPOINT ["python", "-m", "uvicorn"]
+CMD ["app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+For most applications, CMD alone is simpler and more flexible.
+
+**Always use JSON array form** (also called exec form), not shell form:
+
+```dockerfile
+# shell form — don't use this
+CMD python app.py
+
+# JSON array form — use this
+CMD ["python", "app.py"]
+```
+
+Shell form runs the command via `sh -c`, making the shell process PID 1 instead of your application. When Docker sends SIGTERM to stop the container, the shell may not forward the signal to the child process. Your app won't get a chance to shut down gracefully, and after the timeout Docker will SIGKILL it. JSON array form runs the executable directly as PID 1, so signals are delivered correctly.
+
+## Building and running
+
+```bash
+# build with a tag
+docker build -t myapp:latest .
+
+# build with a specific version tag
+docker build -t myapp:1.0.0 .
+
+# run the container, mapping port 8000 on the host to 8000 in the container
+docker run -p 8000:8000 myapp:latest
+
+# run with environment variables
+docker run -p 8000:8000 -e DATABASE_URL=postgres://... myapp:latest
+
+# run in the background
+docker run -d -p 8000:8000 --name myapp myapp:latest
+```
+
+The `.` at the end of `docker build` is the **build context** — the directory whose contents are available to COPY instructions. It's not necessarily the directory containing the Dockerfile; you can specify a different Dockerfile path with `-f`:
+
+```bash
+docker build -f docker/Dockerfile.prod -t myapp:latest .
+```
+
+Use a `.dockerignore` file to exclude files from the build context that don't need to be there — `node_modules`, `.git`, local `.env` files, build artifacts. Large build contexts slow down every build because the entire directory is uploaded to the Docker daemon before building starts.
+
+<!-- RESOURCES -->
+
+- [Dockerfile reference](https://docs.docker.com/reference/dockerfile/)
+- [Docker best practices for writing Dockerfiles](https://docs.docker.com/build/building/best-practices/)
+- [Multi-stage builds](https://docs.docker.com/build/building/multi-stage/)
+
+<!-- ZH_SUMMARY -->
+Dockerfile 是构建容器镜像的配方。它从一个基础镜像开始——基础镜像是一个操作系统快照，通常已经安装了某种语言运行时——然后添加应用程序的依赖项，复制代码，并声明应用程序如何启动。每条指令都会在前一条指令之上创建一个新层，最终叠加起来的所有层就是镜像。
+
+为简单应用编写 Dockerfile 很直接。但要把它做到生产级，需要理解几个不那么直观的概念：为缓存效率而设计的层顺序、CMD 与 ENTRYPOINT 的区别，以及为什么以正确的顺序复制文件可能意味着 5 秒重建和 3 分钟重建的差别。
+
+多阶段构建值得尽早学习。它允许你使用完整的构建环境（编译器、开发依赖、构建工具）来生成产物，然后只把产物复制到一个最小化的最终镜像中。结果是镜像更小、攻击面依赖更少，推送和拉取也更快。
+
+<!-- ZH_DEEP_DIVE -->
+## Dockerfile 的结构剖析
+
+下面是一个真实的 Python Web 应用 Dockerfile：
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+ENV PORT=8000
+EXPOSE 8000
+
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+再看一个 Node.js 应用的例子：
+
+```dockerfile
+FROM node:20-slim
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+COPY . .
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]
+```
+
+关键指令：
+
+| 指令 | 作用 |
+|-------------|--------------|
+| `FROM` | 设置基础镜像——一切都从这里开始 |
+| `WORKDIR` | 为后续指令设置工作目录；如果目录不存在则创建 |
+| `COPY` | 将构建上下文中的文件复制到镜像中 |
+| `RUN` | 在构建期间执行命令；创建一个新层 |
+| `ENV` | 设置环境变量，该变量会保留到运行中的容器 |
+| `ARG` | 构建时变量；仅在构建期间可用，运行中的容器中不可用 |
+| `EXPOSE` | 声明容器监听的端口（仅作说明——并不会发布端口） |
+| `CMD` | 容器启动时运行的默认命令；可在 `docker run` 时覆盖 |
+| `ENTRYPOINT` | 固定的可执行文件；CMD 成为它的参数 |
+
+## FROM：选择基础镜像
+
+基础镜像是 Dockerfile 中最重要的决策。它决定了操作系统的用户空间、可用的工具，以及最终镜像大小的很大一部分。
+
+**语言专用的 slim 变体**是大多数应用的合适默认选择：
+
+```dockerfile
+FROM python:3.11-slim
+FROM node:20-slim
+FROM golang:1.22-bookworm
+```
+
+`-slim` 变体基于 Debian，去掉了大部分可选软件包。它们对大多数用途来说足够小，而且没有 Alpine 的兼容性问题。
+
+**Alpine 镜像**（`python:3.11-alpine`、`node:20-alpine`）很诱人，因为它们非常小——通常比 slim 变体小 5–10 倍。但 Alpine 使用 musl libc 而不是 glibc。大多数纯 Python 或纯 JS 代码运行正常，但 C 扩展（numpy、psycopg2、bcrypt）经常安装失败或产生微妙的运行时 bug。除非你特别需要 Alpine 的体积，否则 slim 变体更安全。
+
+**Distroless 镜像**（来自 `gcr.io/distroless/`）只包含运行时和你的应用——没有 shell、没有包管理器、没有实用工具。它们非常安全，也非常难以调试。在一切正常工作之后，作为最终生产镜像是个好选择；在你还在摸索阶段时则不是好选择。
+
+**始终固定到特定版本。** `FROM python:latest` 会在你重新构建时悄悄升级，导致不可预测的故障：
+
+```dockerfile
+# wrong
+FROM python:latest
+
+# right
+FROM python:3.11-slim
+# or even more specific:
+FROM python:3.11.8-slim
+```
+
+## RUN：安装依赖
+
+每条 `RUN` 指令都会创建一个新层。保持层小而 meaningful 是好的，但有一个重要的例外：**始终将 apt-get update 和 apt-get install 合并到单条 RUN 指令中**：
+
+```dockerfile
+# wrong — stale cache can serve an old package index
+RUN apt-get update
+RUN apt-get install -y curl
+
+# right
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+```
+
+如果 `apt-get update` 是单独的一层，Docker 会缓存它。在未来的构建中，Docker 会复用那个缓存的层，即使包索引已经是一周前的——这可能导致 `apt-get install` 失败，因为它要找的包版本已不在缓存的索引中。将它们放在同一条指令中可确保 `update` 始终在 `install` 之前运行。
+
+末尾的 `rm -rf /var/lib/apt/lists/*` 会删除包列表，这些列表可能给镜像增加几十兆字节。始终在同一条 `RUN` 指令中清理——在后续的 `RUN` 中清理并不会从较早的层中删除文件。
+
+## COPY：将代码放入镜像
+
+高效构建的关键在于理解 Docker 的层缓存如何与 COPY 交互。当你修改一个文件时，Docker 会使包含该文件的 COPY 指令的缓存失效，并重新构建其后的所有内容。
+
+模式是：**先复制依赖清单，安装依赖，然后复制源代码。**
+
+```dockerfile
+# copy only the dependency list first
+COPY requirements.txt .
+# this layer only rebuilds when requirements.txt changes
+RUN pip install --no-cache-dir -r requirements.txt
+
+# now copy the rest of the code
+# this layer rebuilds on every code change, but pip install doesn't
+COPY . .
+```
+
+如果你先执行 `COPY . .`，那么每一次代码改动都会使 pip install 层失效，并强制重新安装所有包。使用上面的模式，pip install 只会在 `requirements.txt` 实际发生变化时重新运行。
+
+关于文件所有权，使用 `--chown` 在同一条指令中设置所有者，而不是单独的 `RUN chown`：
+
+```dockerfile
+COPY --chown=appuser:appuser . .
+```
+
+## CMD 与 ENTRYPOINT
+
+CMD 和 ENTRYPOINT 都指定容器启动时运行什么，但它们的行为不同：
+
+- **CMD** 是默认命令。可以通过向 `docker run` 传递命令来完全覆盖它：`docker run myapp python manage.py migrate` 会完全替换 CMD。
+- **ENTRYPOINT** 是固定的可执行文件。如果你设置了 entrypoint，CMD 就成为传递给它的参数。entrypoint 本身只能通过 `--entrypoint` 覆盖。
+
+一个常见的模式：ENTRYPOINT 设置可执行文件，CMD 设置默认参数：
+
+```dockerfile
+ENTRYPOINT ["python", "-m", "uvicorn"]
+CMD ["app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+对大多数应用来说，只用 CMD 更简单、更灵活。
+
+**始终使用 JSON 数组形式**（也称为 exec 形式），而不是 shell 形式：
+
+```dockerfile
+# shell form — don't use this
+CMD python app.py
+
+# JSON array form — use this
+CMD ["python", "app.py"]
+```
+
+Shell 形式通过 `sh -c` 运行命令，使 shell 进程成为 PID 1，而不是你的应用。当 Docker 发送 SIGTERM 停止容器时，shell 可能不会将信号转发给子进程。你的应用将没有机会优雅关闭，超时后 Docker 会对其发送 SIGKILL。JSON 数组形式直接以 PID 1 运行可执行文件，因此信号能被正确传递。
+
+## 构建与运行
+
+```bash
+# build with a tag
+docker build -t myapp:latest .
+
+# build with a specific version tag
+docker build -t myapp:1.0.0 .
+
+# run the container, mapping port 8000 on the host to 8000 in the container
+docker run -p 8000:8000 myapp:latest
+
+# run with environment variables
+docker run -p 8000:8000 -e DATABASE_URL=postgres://... myapp:latest
+
+# run in the background
+docker run -d -p 8000:8000 --name myapp myapp:latest
+```
+
+`docker build` 末尾的 `.` 是**构建上下文**——其内容可供 COPY 指令使用的目录。它不一定是包含 Dockerfile 的目录；你可以用 `-f` 指定不同的 Dockerfile 路径：
+
+```bash
+docker build -f docker/Dockerfile.prod -t myapp:latest .
+```
+
+使用 `.dockerignore` 文件将不需要出现在构建上下文中的文件排除——`node_modules`、`.git`、本地 `.env` 文件、构建产物。大型构建上下文会拖慢每一次构建，因为整个目录会在构建开始前被上传到 Docker daemon。
+
+<!-- ZH_RESOURCES -->
+- [Dockerfile 参考](https://docs.docker.com/reference/dockerfile/)
+- [编写 Dockerfile 的 Docker 最佳实践](https://docs.docker.com/build/building/best-practices/)
+- [多阶段构建](https://docs.docker.com/build/building/multi-stage/)
+
+<!-- ZH_UI -->
+1. 为你的应用编写 Dockerfile
+2. 使用 docker build 在本地构建镜像
+3. 使用 docker run 运行容器并验证其正常工作
+4. 使用多阶段构建来保持最终镜像精简
+5. 了解哪些文件应通过 .dockerignore 排除
+6. 我能构建镜像了。但我的应用还需要数据库——如何让它们一起运行？
+7. 我已经把应用容器化了，但它需要 Postgres 一起运行。目前我每次都手动分别启动它们。应该有一种方式可以声明整个技术栈并一起启动所有内容。
+8. 我的镜像能正常工作，但有 1.2GB。如何让它更小？
+9. 推送和拉取耗时很久。我不确定里面有什么或为什么这么大。而且每次改一行代码整个东西就从头重建——一定有更聪明的做法。
+10. 我的 docker build 失败了，我完全不知道为什么。
+11. 错误信息指向一个 RUN 命令，但我看不出里面到底出了什么问题。而且有时并不是失败——镜像构建正常，但里面的应用行为不符合预期。

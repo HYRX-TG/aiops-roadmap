@@ -1,0 +1,241 @@
+---
+id: hpa-vpa
+title: Horizontal and Vertical Pod Autoscaling
+zone: kubernetes-production
+edges:
+  to: []
+difficulty: 3
+tags:
+  - kubernetes
+  - hpa
+  - vpa
+  - autoscaling
+  - pods
+  - k8s
+  - production
+  - scaling
+category: concept
+milestones:
+  - >-
+    Know why CPU% is a poor scaling signal for most apps — and what custom
+    metrics (request rate, queue depth) look like instead
+  - >-
+    Understand KEDA: event-driven autoscaling triggered by external sources like
+    SQS queues, Kafka lag, or Prometheus metrics
+  - >-
+    Know scaling behavior tuning: stabilizationWindow, scaleDown policies, and
+    why fast scale-up + slow scale-down is usually the right default
+  - >-
+    Understand VPA modes — Off, Initial, Recreate — and why Recreate evicts
+    running pods (and when that's acceptable)
+  - >-
+    Know the HPA + VPA conflict: both touching resource requests simultaneously
+    causes thrashing; use VPA in Off mode for recommendations only
+title_zh: "水平与垂直 Pod 自动扩缩容"
+
+---
+
+
+Static replica counts are a compromise: high enough to handle peak traffic (expensive), or low enough to save money (risky). HPA adjusts replica counts dynamically based on metrics. VPA adjusts the resource requests of individual pods. Together they let the cluster self-tune rather than requiring you to guess right upfront.
+
+<!-- DEEP_DIVE -->
+
+## HPA: Horizontal Pod Autoscaler
+
+HPA watches a metric and adjusts replica count to keep that metric within a target range. The classic configuration is CPU:
+
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: my-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-api
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+```
+
+HPA watches the average CPU utilization across all pods. If it's above 60%, it adds replicas. If it's below, it removes them.
+
+## Why CPU is often the wrong metric
+
+CPU utilization is an implementation detail, not a measure of load. An I/O-bound service (waiting on database queries, external APIs) could be handling heavy load while showing 5% CPU — and HPA wouldn't scale it.
+
+Better signals are application-level metrics:
+- Request rate (requests per second)
+- Request queue depth
+- Response latency percentiles
+
+These require your app to emit custom metrics into Prometheus (or a compatible adapter), which the HPA can then query. The `autoscaling/v2` API supports `Pods` and `External` metric types for this.
+
+## KEDA: Event-driven autoscaling
+
+KEDA (Kubernetes Event-Driven Autoscaler) extends HPA with native connectors for external event sources:
+
+- SQS queue depth → scale workers as the queue fills
+- Kafka consumer group lag → scale consumers when messages back up
+- Prometheus query → scale on any metric you can express
+- Cron schedule → scale to zero at night, pre-warm in the morning
+
+KEDA can also scale to zero — something standard HPA can't do. This is useful for batch workers or development workloads that should consume no resources when idle.
+
+## Scale-down behavior and stabilizationWindow
+
+Fast scale-up is usually what you want: traffic spiked, add replicas now. But fast scale-down is usually dangerous: traffic ebbed, remove replicas — and then traffic came back and your service is understaffed before the new replicas start.
+
+HPA has stabilization windows to control this:
+
+```yaml
+behavior:
+  scaleDown:
+    stabilizationWindowSeconds: 300  # don't scale down for 5 minutes after a spike
+    policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 60            # scale down at most 25% per minute
+  scaleUp:
+    stabilizationWindowSeconds: 0    # scale up immediately
+```
+
+The default scale-down stabilization is 5 minutes. This is usually the right default — leave it there unless you have a specific reason to change it.
+
+## VPA: Vertical Pod Autoscaler
+
+VPA observes the actual resource usage of your pods over time and recommends (or sets) better resource requests. It solves the "my requests are wrong because I guessed" problem.
+
+VPA has three modes:
+
+**Off** — VPA just collects data and makes recommendations. You apply them manually. This is the safest starting point: get recommendations without disrupting running pods.
+
+**Initial** — VPA sets resource requests when a pod is first created. Pods already running aren't touched. No evictions.
+
+**Recreate** — VPA actively evicts pods to update their resource requests when its recommendations change significantly. This causes pod restarts, which is disruptive. Use only for workloads where you've verified VPA's recommendations are stable.
+
+## The HPA + VPA conflict
+
+HPA and VPA can't both manage the same target metric on the same deployment without conflicting. If HPA is scaling based on CPU percentage and VPA is simultaneously changing the CPU requests those percentages are calculated against, they'll fight each other and cause replica count thrashing.
+
+The safe combination: **HPA for replica count on application metrics (not CPU), VPA in Off mode for recommendations only.** Use VPA's recommendations to tune your requests, then configure HPA on request rate or queue depth.
+
+If you must use CPU-based HPA alongside VPA, use VPA in Initial or Off mode — never Recreate.
+
+<!-- RESOURCES -->
+
+- [Kubernetes Docs - Horizontal Pod Autoscaling](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/) -- type: docs, time: 25m
+- [Kubernetes Docs - Vertical Pod Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler) -- type: docs, time: 20m
+- [KEDA Documentation](https://keda.sh/docs/) -- type: docs, time: 30m
+
+<!-- ZH_SUMMARY -->
+静态副本数是一种折中方案：要么设置得足够高以应对峰值流量（成本高昂），要么设置得足够低以节省开支（风险较大）。HPA 根据指标动态调整副本数。VPA 调整单个 Pod 的资源请求。二者结合，让集群能够自我调节，而无需你在前期就做出准确预判。
+
+<!-- ZH_DEEP_DIVE -->
+## HPA：Horizontal Pod Autoscaler
+
+HPA 会监控某个指标，并调整副本数，使该指标保持在目标范围内。最经典的配置是基于 CPU：
+
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: my-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-api
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+```
+
+HPA 会监控所有 Pod 的平均 CPU 利用率。如果高于 60%，就增加副本；如果低于 60%，就减少副本。
+
+## 为什么 CPU 往往是错误的指标
+
+CPU 利用率是一种实现细节，而不是负载的度量。一个 I/O 密集型服务（等待数据库查询、外部 API）可能正在处理高负载，但 CPU 利用率只有 5%——而 HPA 不会对它进行扩缩容。
+
+更好的信号是应用层指标：
+- 请求速率（每秒请求数）
+- 请求队列深度
+- 响应延迟百分位数
+
+这些指标需要你的应用将自定义指标发送到 Prometheus（或兼容的 adapter），然后 HPA 才能查询这些指标。`autoscaling/v2` API 为此支持 `Pods` 和 `External` 指标类型。
+
+## KEDA：事件驱动的自动扩缩容
+
+KEDA（Kubernetes Event-Driven Autoscaler）通过原生连接器扩展了 HPA，支持外部事件源：
+
+- SQS 队列深度 → 随着队列积压扩缩 worker
+- Kafka 消费者组 lag → 当消息积压时扩缩消费者
+- Prometheus 查询 → 基于你能表达的任何指标进行扩缩容
+- Cron 调度 → 夜间缩容到零，早晨预热
+
+KEDA 还可以缩容到零——这是标准 HPA 做不到的。这对于批处理 worker 或空闲时不应消耗资源的开发工作负载很有用。
+
+## 缩容行为与 stabilizationWindow
+
+快速扩容通常是你想要的：流量激增，立即增加副本。但快速缩容通常是危险的：流量回落，移除副本——然后流量又回来了，而新副本还没启动，你的服务就人手不足了。
+
+HPA 有稳定窗口来控制这一点：
+
+```yaml
+behavior:
+  scaleDown:
+    stabilizationWindowSeconds: 300  # don't scale down for 5 minutes after a spike
+    policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 60            # scale down at most 25% per minute
+  scaleUp:
+    stabilizationWindowSeconds: 0    # scale up immediately
+```
+
+默认的缩容稳定窗口是 5 分钟。这通常是正确的默认值——除非你有特定理由要修改，否则就保持原样。
+
+## VPA：Vertical Pod Autoscaler
+
+VPA 会随时间观察 Pod 的实际资源使用情况，并推荐（或设置）更好的资源 requests。它解决了“我的 requests 是错的，因为我是猜的”这个问题。
+
+VPA 有三种模式：
+
+**Off**——VPA 只收集数据并给出建议。你手动应用这些建议。这是最安全的起点：在不干扰运行中 Pod 的情况下获得建议。
+
+**Initial**——VPA 在 Pod 首次创建时设置资源 requests。已经在运行的 Pod 不受影响。不会发生驱逐。
+
+**Recreate**——当 VPA 的建议发生显著变化时，它会主动驱逐 Pod 以更新其资源 requests。这会导致 Pod 重启，具有干扰性。仅用于你已验证 VPA 建议稳定的工作负载。
+
+## HPA + VPA 冲突
+
+HPA 和 VPA 不能在同一 Deployment 上同时管理同一个目标指标而不发生冲突。如果 HPA 基于 CPU 百分比进行扩缩容，而 VPA 同时又在修改这些百分比所依据的 CPU requests，它们就会互相打架，导致副本数反复震荡。
+
+安全的组合是：**HPA 基于应用指标（而非 CPU）管理副本数，VPA 处于 Off 模式仅提供建议。** 使用 VPA 的建议来调整你的 requests，然后在请求速率或队列深度上配置 HPA。
+
+如果你必须将基于 CPU 的 HPA 与 VPA 一起使用，请将 VPA 设为 Initial 或 Off 模式——绝不要用 Recreate。
+
+<!-- ZH_RESOURCES -->
+- [Kubernetes 文档 - Horizontal Pod Autoscaling](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/) -- 类型: 文档, 时长: 25m
+- [Kubernetes 文档 - Vertical Pod Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler) -- 类型: 文档, 时长: 20m
+- [KEDA 文档](https://keda.sh/docs/) -- 类型: 文档, 时长: 30m
+
+<!-- ZH_UI -->
+1. 了解为什么 CPU% 对大多数应用来说是糟糕的扩缩容信号——以及自定义指标（请求速率、队列深度）是什么样子
+2. 理解 KEDA：由 SQS 队列、Kafka 积压或 Prometheus 指标等外部源触发的事件驱动自动扩缩容
+3. 了解扩缩容行为调优：stabilizationWindow、缩容策略，以及为什么快速扩容 + 缓慢缩容通常是正确的默认值
+4. 理解 VPA 模式——Off、Initial、Recreate——以及为什么 Recreate 会驱逐运行中的 Pod（以及何时可以接受）
+5. 了解 HPA + VPA 冲突：两者同时修改资源请求会导致反复震荡；将 VPA 设为 Off 模式仅用于获取建议

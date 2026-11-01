@@ -1,0 +1,14 @@
+﻿=== P2 alerts ===
+2026-10-25T01:19:48+00:00 P0 log_ERROR_payment-api_latency_13ms_exceeds_t
+2026-10-25T01:19:48+00:00 P0 log_ERROR_payment-api_failed_to_start_after_
+2026-10-25T01:15:29+00:00 P0 log_ERROR_payment-api_latency_55ms_exceeds_t
+2026-10-25T01:15:29+00:00 P0 log_ERROR_payment-api_latency_30ms_exceeds_t
+2026-10-25T01:15:29+00:00 P0 log_ERROR_payment-api_latency_57ms_exceeds_t
+2026-10-25T01:15:29+00:00 P0 log_ERROR_payment-api_latency_32ms_exceeds_t
+2026-10-25T01:14:59+00:00 P0 log_ERROR_payment-api_latency_33ms_exceeds_t
+2026-10-25T01:14:59+00:00 P0 log_ERROR_payment-api_latency_38ms_exceeds_t
+2026-10-25T01:14:59+00:00 P0 log_ERROR_payment-api_latency_34ms_exceeds_t
+2026-10-25T01:14:36+00:00 P0 log_ERROR_payment-api_latency_29ms_exceeds_t
+2026-10-25T01:14:36+00:00 P0 log_ERROR_payment-api_latency_19ms_exceeds_t
+2026-10-25T01:14:36+00:00 P0 log_ERROR_payment-api_latency_42ms_exceeds_t
+2026-10-24T02:01:14+00:00 P1 log_ERROR_healthz_probe_timeout_after_5s__cp

@@ -1,0 +1,80 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# ── AIOps 自研部分（2026-10-25 补） ──
+# 后端运行时产物（数据库/日志不入库）
+backend/*.db
+backend/**/__pycache__/
+__pycache__/
+backend/.pytest_cache/
+# 宿主机临时文件（历史调试残留，一律不进库）
+_*.txt
+_*.sh
+_*.log
+_*.json
+_*.js
+# 虚拟机探针运行痕迹
+vm-agent/__pycache__/
+vm-agent/evidence/*.log
+
+# SQLite WAL 边车文件（运行时产物）
+*.db-shm
+*.db-wal
+
+# 自愈实验沙箱（运行时生成）
+vm-agent/selfheal/sandbox/
+# agent 运行痕迹
+vm-agent/**/__pycache__/
+vm-agent/**/*.db
+
+# agentic 测试台的运行时沙箱
+vm-agent/agentic/dyn-sandbox/
+vm-agent/agentic/*_raw.json
+
+# 一次性调试脚本与运行日志（不入库）
+.workbuddy/
+dev_log.txt
+run_build.py
+start_dev_*.py
+scripts/repro_parse*.mjs
+scripts/test_cycle_fallback.mjs
+scripts/ui_strings.json

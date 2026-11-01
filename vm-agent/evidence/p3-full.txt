@@ -1,0 +1,50 @@
+===== [P3-内存耗尽] log_ERROR_payment-api_memory_guard__availabl (level=P0, judge=rule) =====
+ROOT_CAUSE: 命中排查剧本《OOMKilled（内存超限被杀）》：OOM 分两种：容器内存超 limit（k8s 杀，看 describe 的 Last State）和节点内存耗尽（内核杀，看 dmesg）。修复不是简单'加大 limit'——先看是泄漏还是正常增长：泄漏要修代码，增长要调 limit，两者处置完全不同。
+CONFIDENCE: medium
+KNOWN:
+  - 告警源 business_log · 严重度 critical · 分级 P0（评分 8.0）
+  - 分级依据：severity=critical 基础分 5.0
+  - 分级依据：命中业务关键词 ['payment'] +2
+  - 已采集节点侧排查证据（见 investigation.evidence）
+INFERRED:
+  - 知识库命中 ['incident/2026-03-dependency-timeout.md', 'runbook/dependency-timeout-v2.md']，按剧本方向处置
+UNCERTAIN:
+  - 规则兜底未做根因推理，请以剧本《OOMKilled（内存超限被杀）》的排查链人工确认（接 LLM 后可自动推理）
+INVESTIGATION CHAIN:
+  [区分 OOM 类型] Last State=OOMKilled = 容器级；dmesg 有 kill = 节点级
+      证据/命令: 按剧本《OOMKilled（内存超限被杀）》执行：kubectl describe pod <pod> | grep -A8 'Last State' ; kubectl get pod <pod> -o jsonpath='{.status.containerStatuses[0].restartCount}'
+  [看内存曲线形态] 峰值贴 limit = 调 limit；持续爬升 = 泄漏，找研发
+      证据/命令: 按剧本《OOMKilled（内存超限被杀）》执行：kubectl top pod <pod> --containers ; cat /sys/fs/cgroup/memory.peak 2>/dev/null
+  [看最近变更] 最近 30 分钟内的 deploy/configmap/secret/scale 事件——有变更先怀疑变更
+      证据/命令: 按剧本《OOMKilled（内存超限被杀）》执行：kubectl get events -A --sort-by=.lastTimestamp | tail -20 ; kubectl rollout history deploy/<svc> -n <ns>
+VERIFICATION COMMANDS:
+  $ kubectl get pod <pod> -w  # 重启后是否再次 OOM（5 分钟内复现 = 泄漏）
+  $ kubectl top pod <pod>  # 内存是否回落
+REMEDIATION [SAFE] (可自动/低风险):
+  - 只读观察：确认是否反复 OOM（5 分钟内重启≥2 次即判泄漏，需找研发） (downtime=none)
+  - 导出内存曲线与 limit 对比报告（给扩容审批当依据） (downtime=none)
+REMEDIATION [APPROVAL REQUIRED] (需审批):
+  - 调高 memory limit（有 headroom 时） (downtime=rolling, approver=SRE on-call, risk=需 Pod 重建，滚动更新有短暂就绪缺口)
+  - 重启 Pod 缓解（不解决根因，只争取排查时间） (downtime=brief, approver=SRE on-call, risk=清空当前状态，可能丢在途请求)
+  - 回滚到内存正常的旧版本 (downtime=rolling, approver=变更方 + SRE on-call, risk=同变更回滚风险)
+RECOMMENDATION: 按排查链执行：先确认影响面 → 拉证据 → 定位 → 验证 → 处置；高危动作必须人工审批
+DRY-RUN PLAN:
+  - 🟢 可自动：只读观察：确认是否反复 OOM（5 分钟内重启≥2 次即判泄漏，需找研发）
+  - 🟢 可自动：导出内存曲线与 limit 对比报告（给扩容审批当依据）
+  - 🔴 需审批（停机风险:rolling · 审批人:SRE on-call）：调高 memory limit（有 headroom 时）
+  - 🔴 需审批（停机风险:brief · 审批人:SRE on-call）：重启 Pod 缓解（不解决根因，只争取排查时间）
+  - 🔴 需审批（停机风险:rolling · 审批人:变更方 + SRE on-call）：回滚到内存正常的旧版本
+  blast_radius=pod approver=SRE on-call state=pending_approval
+GUARDRAIL: tier=1 allowed=True reason=只读操作，直接放行
+RAW EVIDENCE (from vm-agent, first 2600 chars):
+--cluster-cidr=10.244.0.0/16 --cluster-name=kubernetes --cluster-signing-cert-file=/etc/kubernetes/pki/ca.crt --cluster-signing-key-file=/etc/kubernetes/pki/ca.key --controllers=*,bootstrapsigner,tokencleaner --kubeconfig=/etc/kubernetes/controller-manager.conf --leader-elect=true --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt --root-ca-file=/etc/kubernetes/pki/ca.crt --service-account-private-key-file=/etc/kubernetes/pki/sa.key --service-cluster-ip-range=10.96.0.0/12 --use-service-account-credentials=true
+-- Top3 内存进程:
+    PID USER     %CPU %MEM     ELAPSED COMMAND
+ 234642 tbt      20.8 36.3       00:49 python3 -c  import time chunks = [] for i in range(5):     chunks.append(bytearray(280 * 1024 * 1024))   # 5×280MB ≈ 1.4GB     chunks[-1][::4096] = b"\x01" * (len(chunks[-1]) // 4096)   # 真实触摸页     time.sleep(8) time.sleep(20) 
+   1779 root      3.1  6.6    14:29:05 kube-apiserver --advertise-address=192.168.197.133 --allow-privileged=true --authorization-mode=Node,RBAC --client-ca-file=/etc/kubernetes/pki/ca.crt --enable-admission-plugins=NodeRestriction --enable-bootstrap-token-auth=true --etcd-cafile=/etc/kubernetes/pki/etcd/ca.crt --etcd-certfile=/etc/kubernetes/pki/apiserver-etcd-client.crt --etcd-keyfile=/etc/kubernetes/pki/apiserver-etcd-client.key --etcd-servers=https://127.0.0.1:2379 --kubelet-client-certificate=/etc/kubernetes/pki/apiserver-kubelet-client.crt --kubelet-client-key=/etc/kubernetes/pki/apiserver-kubelet-client.key --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname --proxy-client-cert-file=/etc/kubernetes/pki/front-proxy-client.crt --proxy-client-key-file=/etc/kubernetes/pki/front-proxy-client.key --requestheader-allowed-names=front-proxy-client --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt --requestheader-extra-headers-prefix=X-Remote-Extra- --requestheader-group-headers=X-Remote-Group --requestheader-username-headers=X-Remote-User --secure-port=6443 --service-account-issuer=https://kubernetes.default.svc.cluster.local --service-account-key-file=/etc/kubernetes/pki/sa.pub --service-account-signing-key-file=/etc/kubernetes/pki/sa.key --service-cluster-ip-range=10.96.0.0/12 --tls-cert-file=/etc/kubernetes/pki/apiserver.crt --tls-private-key-file=/etc/kubernetes/pki/apiserver.key
+  31314 root      0.0  4.2    12:38:41 /usr/libexec/fwupd/fwupd
+### 3. Pod 状态全景（非 Running / 重启异常）
+No resources found
+kube-flannel   kube-flannel-ds-jmmrg         1/1     Running   1 (24h ago)   3d
+kube-system    coredns-86bcc9c669-s54g4      1/1     Running   1 (24h ago)   2d23h
+kube-system    core

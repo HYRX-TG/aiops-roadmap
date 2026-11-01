@@ -1,0 +1,31 @@
+{
+  "storm_total": 10000,
+  "wall_seconds": 0.087,
+  "throughput_per_sec": 114650.9,
+  "ingested": 10000,
+  "noise_reduction_ratio": 0.6787,
+  "dropped_dedup": 2500,
+  "dropped_gate": 4287,
+  "forwarded": 3213,
+  "triage_levels": {
+    "P0": 367,
+    "P1": 1484,
+    "P2": 787,
+    "P3": 575
+  },
+  "triage_routes": {
+    "research": 1851,
+    "batch": 787,
+    "notify": 575
+  },
+  "ingest_latency_ms": {
+    "p50": 0.008,
+    "p95": 0.012
+  },
+  "research_latency_ms": {
+    "p50": 70.0,
+    "p95": 100.4,
+    "sample": 30
+  },
+  "token_saved_ratio_vs_full_llm": 0.8149
+}
