@@ -78,3 +78,6 @@ start_dev_*.py
 scripts/repro_parse*.mjs
 scripts/test_cycle_fallback.mjs
 scripts/ui_strings.json
+
+# 本地 AI 工具配置（个人权限白名单，不入库）
+.claude/settings.local.json
