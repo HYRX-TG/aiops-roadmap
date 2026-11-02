@@ -13,7 +13,7 @@
 > ⑨ **压测量化**：`bench/flood.py` 1 万条告警风暴实测降噪 67.9%；**LLM 主链路占接入量 18.5%（相对全量进模型省 42.4%）**；端到端 HTTP 吞吐 37-93 QPS（瓶颈 SQLite 逐条 commit）——口径详见 `backend/bench/report.md`。
 > ⑩ **生产级盲测**：虚拟机真实注入 8 场景（归因精度）+ 4 场景（SRE 排查链/处置分级），规则大脑 10/24 → DeepSeek 24/24，记录在 `vm-agent/TEST-RESULTS.md`。
 >
-> 📄 面试怎么说 / 高频问答见 **`面试备战.md`**；对标分析见 **`对标优化方案.md`**。
+> 📄 项目讲解与设计取舍见 `README.md` 与 `docs/`；运行方式见本文。
 
 ---
 
@@ -356,6 +356,6 @@ python executor.py --loop --service sandbox-payment
 ---
 
 ## 附：本仓库与原版的差异（魔改记录）
-- 新增 `AIOPS-GUIDE.md`、`对标优化方案.md`、`面试备战.md`、`frontend-showcase.html`、`backend/` 全目录。
+- 新增 `AIOPS-GUIDE.md`、`frontend-showcase.html`、`backend/` 全目录。
 - 全站 UI 中文化；新增 `content/aiops/` 知识节点；ContentPanel 增加自研 AI 助手面板 + 后端配置。
 - "Improve this page" 链接对自研 `aiops` 分区自动隐藏（避免指向原作者仓库）。
